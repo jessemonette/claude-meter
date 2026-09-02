@@ -13,6 +13,8 @@ use claude_meter::{models::UsageSnapshot, oauth};
 use serde::{Deserialize, Serialize};
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
+#[cfg(target_os = "macos")]
+use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
 use tray_icon::menu::{
     CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem, Submenu,
 };
@@ -667,9 +669,6 @@ fn main() -> Result<()> {
         log_warn("telemetry: could not create install ID; daily active tracking disabled");
     }
 
-    #[cfg(target_os = "macos")]
-    set_macos_accessory();
-
     let mut config = load_config();
     if config.preferred_browser.is_none() {
         if let Some(name) = default_browser_name() {
@@ -678,7 +677,11 @@ fn main() -> Result<()> {
         }
     }
 
-    let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+    let mut event_loop_builder = EventLoopBuilder::<AppEvent>::with_user_event();
+    #[allow(unused_mut)]
+    let mut event_loop = event_loop_builder.build();
+    #[cfg(target_os = "macos")]
+    event_loop.set_activation_policy(ActivationPolicy::Accessory);
     let proxy = event_loop.create_proxy();
     let blink_proxy = event_loop.create_proxy();
     let (refresh_tx, refresh_rx) = mpsc::channel::<()>();
@@ -2609,18 +2612,6 @@ fn save_config(cfg: &Config) {
     if let Ok(s) = serde_json::to_string_pretty(cfg) {
         let _ = std::fs::write(&path, s);
     }
-}
-
-#[cfg(target_os = "macos")]
-fn set_macos_accessory() {
-    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-    use objc2_foundation::MainThreadMarker;
-    let mtm = match MainThreadMarker::new() {
-        Some(m) => m,
-        None => return,
-    };
-    let app = NSApplication::sharedApplication(mtm);
-    app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 }
 
 #[cfg(target_os = "macos")]
